@@ -8,9 +8,14 @@
 project=$1
 membership_management_cluster=$2
 project_number=$3
+namespace=$4
+location=$5
 echo "using project=$project"
 echo "using membership_management_cluster=$membership_management_cluster"
 echo "using project_number=$project_number"
+echo "using namespace=$namespace"
+echo "using location=$location"
+
 
 # only needed when running outside the cluster
 # gcloud container fleet memberships get-credentials  --project $project $membership_management_cluster
@@ -40,29 +45,31 @@ function syncClusterProfiles() {
 apiVersion: multicluster.x-k8s.io/v1alpha1
 kind: ClusterProfile
 metadata:
- name: $shortName-$location
- namespace: $project
- labels:
-   x-k8s.io/cluster-manager: fleet-memberships-to-clusterprofile-script
-   run_uuid: $run_uuid
-   location: $location
- annotations:
-   membership-uuid: $id
-   endpoint: $endpoint
-   endpoint_type: gke-connect-gateway
-   argocdns: argocd
+  name: $shortName-$location
+  namespace: $namespace
+  labels:
+    x-k8s.io/cluster-manager: fleet-memberships-to-clusterprofile-script
+    run_uuid: $run_uuid
+    location: $location
+  annotations:
+    membership-uuid: $id
+    argocdns: argocd
 spec:
   displayName: $name
   clusterManager:
     name: fleet-memberships-to-clusterprofile-script
 status:
- version:
-   kubernetes: $version
- properties:
-   - name: clusterset.k8s.io
-     value: $project
-   - name: location
-     value: $location
+  version:
+    kubernetes: $version
+  properties:
+    - name: clusterset.k8s.io
+      value: $project
+    - name: location
+      value: $location
+  credentialProviders:
+    - name: gke-connect-gateway
+      cluster:
+        server: $endpoint
 EOM
 
   echo "$crdContent"
@@ -77,9 +84,9 @@ EOM
 
   # now delete obsolete memberships (run_uuid not updated)
   while read -r name; do
-    kubectl delete clusterprofile $name -n $project
-    echo "deleted obsolete clusterprofile($name -n $project)"
-  done< <(kubectl get clusterprofile -n $project -o json -l "run_uuid,run_uuid notin ($run_uuid)" | jq --raw-output '.items[] | "\(.metadata.name)"')
+    kubectl delete clusterprofile $name -n $namespace
+    echo "deleted obsolete clusterprofile($name -n $namespace)"
+  done< <(kubectl get clusterprofile -n $namespace -o json -l "run_uuid,run_uuid notin ($run_uuid)" | jq --raw-output '.items[] | "\(.metadata.name)"')
 
   echo "done with run: $run_uuid, $(date)"
 }
@@ -89,6 +96,6 @@ while true
 do
 	echo "Press [CTRL+C] to stop.."
   syncClusterProfiles
-	sleep 180
+	sleep 120
 done
 
